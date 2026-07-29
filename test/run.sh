@@ -28,6 +28,13 @@ run_biome() {
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
+echo "==> plugins/all.grit is in sync with the individual plugins"
+node scripts/build-all.mjs >/dev/null
+if ! git diff --quiet -- plugins/all.grit 2>/dev/null; then
+  fail "plugins/all.grit is stale — run 'node scripts/build-all.mjs' and commit the result"
+fi
+echo "    ok"
+
 echo "==> violations fixture (expecting $EXPECTED_VIOLATIONS diagnostics)"
 violations_output="$(run_biome test/fixtures/violations.ts)"
 violations_count="$(grep -c 'plugin ━' <<<"$violations_output" || true)"

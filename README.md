@@ -47,19 +47,36 @@ Or, without publishing to a registry, straight from GitHub:
 }
 ```
 
-Then reference the plugins by path. Paths in `plugins` resolve relative to the
-directory containing `biome.json`:
+Then reference `all.grit` — one entry, every rule:
 
 ```jsonc
 // biome.json
 {
-  "plugins": [
-    "./node_modules/@common-pattern/biome-plugins/plugins/no-utc-calendar-day.grit",
-    "./node_modules/@common-pattern/biome-plugins/plugins/no-glued-timestamps.grit"
-  ],
+  "plugins": ["./node_modules/@common-pattern/biome-plugins/plugins/all.grit"],
   "linter": { "enabled": true }
 }
 ```
+
+Want only some of the rules? List the individual files instead:
+
+```jsonc
+{
+  "plugins": [
+    "./node_modules/@common-pattern/biome-plugins/plugins/no-utc-calendar-day.grit"
+  ]
+}
+```
+
+**Why an aggregate file rather than an index that imports the others.** Biome
+resolves each `plugins` entry as one explicit file path and loads it in
+isolation. Measured against 2.5: globs (`plugins/*.grit`), directories, and
+bare package specifiers are all rejected, and a `.grit` file cannot reference a
+pattern defined in another file — `import`, `include`, and a bare call to a
+pattern defined elsewhere all fail to compile. (The standalone Grit CLI has a
+module system; Biome does not implement it.) So `all.grit` is *generated*:
+`scripts/build-all.mjs` wraps each plugin body in a named GritQL pattern and
+composes them with `or`. The individual files stay the source of truth, and
+`pnpm test` fails if the generated file is stale.
 
 ⚠️ **`linter.enabled` must be `true`.** With the linter disabled, Biome
 processes no files and plugins never run — and it reports this as "no files
@@ -123,7 +140,9 @@ false-positive guard, and false positives are how a rule ends up suppressed.
    survives contact with the next reader.
 2. Add a case to both fixtures in `test/fixtures/`, and bump
    `EXPECTED_VIOLATIONS` in `test/run.sh`.
-3. Register it in `biome.json` so the repo lints itself with it.
+3. Run `pnpm build` to regenerate `plugins/all.grit`, and commit it. Consumers
+   pointing at the aggregate pick the new rule up on their next version bump,
+   with no change to their `biome.json`.
 4. **Verify it actually fires** by planting a violation in a real consumer and
    watching the lint fail. A plugin that silently fails to compile, or that is
    registered where the linter never runs, is indistinguishable from one that

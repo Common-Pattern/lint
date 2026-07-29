@@ -1,15 +1,27 @@
 {
   "name": "@common-pattern/biome-plugins",
   "version": "0.1.0",
-  "description": "Shared GritQL plugins for Biome — conventions that are easy to state and easy to forget, enforced at lint time instead of in review",
+  "description": "Shared GritQL plugins for Biome \u2014 conventions that are easy to state and easy to forget, enforced at lint time instead of in review",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Common-Pattern/biome-plugins.git"
   },
-  "keywords": ["biome", "gritql", "lint", "plugins", "static-analysis", "conventions"],
-  "files": ["plugins", "LICENSE", "README.md"],
+  "keywords": [
+    "biome",
+    "gritql",
+    "lint",
+    "plugins",
+    "static-analysis",
+    "conventions"
+  ],
+  "files": [
+    "plugins",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
+    "build": "node scripts/build-all.mjs",
     "test": "./test/run.sh"
   },
   "devDependencies": {
