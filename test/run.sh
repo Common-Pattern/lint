@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-EXPECTED_VIOLATIONS=8
+EXPECTED_VIOLATIONS=10
 
 # Prefer the locally installed Biome (`pnpm install` first). `BIOME_BIN` lets
 # CI or a different package manager point at its own binary.

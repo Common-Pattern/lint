@@ -27,3 +27,19 @@ export function gluedOffsets(wallClock: string, timeZone: string) {
   const b = toDate(`${wallClock}-08:00`, { timeZone }); // no-glued-timestamps
   return [a, b];
 }
+
+interface Wide {
+  id: string;
+  createdAt: string;
+}
+interface Narrow {
+  id: string;
+  suggestedStart: string;
+}
+
+export function doubleAssertions(value: unknown, narrow: Narrow) {
+  // Nothing checks either claim — that is the whole objection.
+  const a = value as unknown as Wide; // no-double-assertion
+  const b = narrow as unknown as Wide; // no-double-assertion
+  return [a, b];
+}

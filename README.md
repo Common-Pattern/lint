@@ -161,6 +161,39 @@ already-validated fields into a wire value. There is no instant and no zone in
 it, and "fixing" it with a date library would force a zone choice at the wrong
 layer.
 
+### `no-double-assertion`
+
+Bans `x as unknown as T`.
+
+A single `as T` is checked: TypeScript rejects it unless one of the two types
+is assignable to the other, so it can narrow or widen but it cannot invent.
+Routing through `unknown` removes that check — the compiler stops relating the
+two types and simply believes the second annotation. Whatever `T` claims is
+then true for every downstream reader, including the ones who typecheck against
+it and ship.
+
+The distinction worth keeping is not "more of the same": `as T` is a partly
+verifiable claim whose failure mode is a compile error. `as unknown as T` is an
+unverified claim whose failure mode is a runtime error in a file that never
+mentioned the cast. The usual tell is a comment beside it explaining why the
+two types "really are" compatible — prose standing in for a check, and prose
+goes stale. One such comment claimed two generated types differed by two
+fields; they differed by six.
+
+Instead: name the overlap (`Omit`/`Pick`/an interface) so both shapes satisfy
+it with no cast, or narrow with a `value is T` type guard, so the shape is
+earned at runtime rather than asserted.
+
+Not matched: `x as T` (checked), `x as unknown` on its own (widening is the
+safe direction), and `x as any as T` — `as any` is already caught by
+`lint/suspicious/noExplicitAny`.
+
+⚠️ **This fires in test files too**, and Biome's `overrides` cannot switch a
+plugin off for a glob (measured against 2.5: an override carrying `plugins` is
+accepted and has no effect). Mocks and fixtures are where bridging a closed
+generated interface is most defensible, so check whether your test directories
+are inside the linted set before adopting this rule.
+
 ## Tests
 
 ```sh
