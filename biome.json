@@ -1,0 +1,8 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
+  "plugins": ["./plugins/no-utc-calendar-day.grit", "./plugins/no-glued-timestamps.grit"],
+  "vcs": { "enabled": false },
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": { "enabled": true, "rules": { "recommended": false } }
+}

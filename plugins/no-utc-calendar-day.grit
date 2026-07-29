@@ -1,0 +1,34 @@
+// Ban deriving a calendar date from an instant with `.toISOString().slice(…)`.
+//
+// It reads as "today". It means "the UTC calendar day" — a different day from
+// the user's or the tenant's for a window as wide as their UTC offset: 05:30
+// every morning for Asia/Kolkata, the whole evening for the Americas. Such a
+// value is then typically compared against a `date` column, which is a local
+// calendar date, so the comparison runs across two different calendars.
+//
+// This is unusually good at hiding. Test suites commonly pin `TZ=UTC`,
+// production is commonly a UTC datacentre, and nobody develops at 03:00 — so
+// the expression is right in every context anyone inspects it in, and wrong
+// only in the answer given to the user.
+//
+// WHAT TO USE INSTEAD
+//   - "today, for this tenant" -> `toDayKey(new Date(), timeZone)`, or the
+//     equivalent `formatInTimeZone(new Date(), timeZone, "yyyy-MM-dd")` from
+//     `date-fns-tz`.
+//   - "the calendar day this instant falls on" -> the same, passing the
+//     instant.
+//   - shifting a `yyyy-MM-dd` key -> calendar arithmetic on the key, never
+//     `addDays` on an instant: adding 24h drifts across a DST boundary.
+//
+// SCOPE. Only a `.slice(…)` applied directly to a `.toISOString()` result
+// matches. The bare form — `row.created_at.slice(0, 10)` on a string column —
+// is deliberately not matched: it is indistinguishable at the AST level from
+// `array.slice(0, 10)` meaning "the first ten", and a rule that needs
+// suppressions to pass is worse than no rule.
+`$instant.toISOString().slice($_)` where {
+  register_diagnostic(
+    span = $instant,
+    message = "This is the UTC calendar day, not the user's or tenant's. Derive the day in an explicit timezone — e.g. formatInTimeZone(value, timeZone, 'yyyy-MM-dd') — rather than slicing an ISO string.",
+    severity = "error"
+  )
+}
