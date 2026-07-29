@@ -4,6 +4,7 @@
 // Not real code — these exist to be linted, not run.
 declare function fromZonedTime(value: unknown, timeZone: string): Date;
 declare function formatDateTime(value: unknown, timeZone: string, fmt: string): string;
+declare function toDate(value: string, opts: { timeZone: string }): Date;
 
 export function utcCalendarDay(instant: Date, timeZone: string) {
   const today = new Date().toISOString().slice(0, 10); // no-utc-calendar-day
@@ -17,4 +18,12 @@ export function gluedTimestamps(key: string, timeZone: string) {
   const c = fromZonedTime(`${key}T00:00:00`, timeZone); // no-glued-timestamps
   const d = formatDateTime(`${key}T12:00:00Z`, timeZone, "date"); // no-glued-timestamps
   return [a, b, c, d];
+}
+
+export function gluedOffsets(wallClock: string, timeZone: string) {
+  // The zone spelled as a number: correct today, a code edit when the zone moves.
+  const a = new Date(`${wallClock}+05:30`); // no-glued-timestamps
+  // Worse than redundant — the embedded offset overrides the timeZone option.
+  const b = toDate(`${wallClock}-08:00`, { timeZone }); // no-glued-timestamps
+  return [a, b];
 }

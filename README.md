@@ -136,9 +136,30 @@ noon UTC is already the next day and it renders tomorrow. The deeper problem is
 that a day key has no instant behind it at all — "28 July" is a calendar fact,
 not a moment — so asking which zone to project it into is the wrong question.
 
-Matches three call shapes (`new Date(…)`, `fromZonedTime(…)`,
-`formatDateTime(…)`) rather than every template literal, for the reason in the
-trade-off note above.
+**It also bans the offset variant** — `` new Date(`${wallClock}+05:30`) `` and
+`` toDate(`${wallClock}-08:00`, { timeZone }) ``. This is the same habit with
+the zone spelled as a number, and it is more tempting because it looks
+deliberate: the author obviously thought about timezones. What they wrote down
+is a fact with an expiry date. An offset is the tz database's *current answer*
+for a zone, not the zone itself — Egypt reinstated DST in 2023, and Chile,
+Morocco and Samoa have all moved — and when one changes, an IANA name is a
+package update while a literal offset is a code edit nobody knows to make.
+
+The `toDate` form fails a second way worth its own message: an embedded offset
+takes **precedence** over the `timeZone` option, so the zone argument isn't
+merely redundant, it is silently discarded.
+
+Matches call shapes (`new Date(…)`, `fromZonedTime(…)`, `formatDateTime(…)`,
+and `toDate(…)` for the offset form) rather than every template literal, for
+the reason in the trade-off note above. The offset branches are deliberately
+scoped to `new Date`/`toDate`: `` `${x}-10:30` `` is not inherently date-shaped
+— it could be a range label — so the enclosing call is what makes the intent
+unambiguous.
+
+Not matched, and deliberately legal: `` `${date}T${time}` ``, joining two
+already-validated fields into a wire value. There is no instant and no zone in
+it, and "fixing" it with a date library would force a zone choice at the wrong
+layer.
 
 ## Tests
 
