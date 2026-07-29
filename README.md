@@ -82,6 +82,24 @@ composes them with `or`. The individual files stay the source of truth, and
 processes no files and plugins never run — and it reports this as "no files
 were processed", not as a plugin error, which is a confusing way to find out.
 
+### Why this isn't on npm (yet)
+
+Consume it as a pinned git dependency, as above. `pnpm` resolves that to a
+codeload tarball at the exact SHA — no clone, no auth, no publish step, and
+reproducible.
+
+The trade is that there is no semver: upgrading means editing a 40-character
+SHA in every consumer. Fine for one or two; annoying beyond that.
+
+The obvious alternative — GitHub Packages (`npm.pkg.github.com`) — is worse
+here: it requires an authentication token even to *read* public packages, so
+every consumer's CI and every developer would need a PAT in their `.npmrc` in
+order to install a lint plugin.
+
+If the SHA-bumping becomes the annoying part, the answer is npmjs.com, which
+needs no token to consume and supports trusted publishing over OIDC from GitHub
+Actions (so no long-lived npm token either).
+
 ## Plugins
 
 ### `no-utc-calendar-day`
