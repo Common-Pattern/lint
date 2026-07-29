@@ -9,6 +9,58 @@
 // Each rule's reasoning lives in its own file; the comments below are carried
 // over verbatim.
 
+pattern no_double_assertion() {
+  // Ban the double assertion `x as unknown as T`.
+  //
+  // A single `as T` is checked: TypeScript rejects it unless one of the two
+  // types is assignable to the other, so it can narrow or widen but it cannot
+  // invent. Routing through `unknown` removes that check entirely — the
+  // compiler stops relating the two types and simply believes the second
+  // annotation. Whatever `T` claims is then true for every downstream reader,
+  // including the ones who typecheck against it and ship.
+  //
+  // It is worth being precise about why this is worse than `as T` rather than
+  // just more of it: `as T` is a claim TypeScript can still partly verify, and
+  // its failure mode is a compile error. `as unknown as T` is a claim nothing
+  // verifies, and its failure mode is a runtime error in a file that never
+  // mentioned the cast. The usual sign is a comment next to it explaining why
+  // the two types "really are" compatible — prose standing in for a check, and
+  // prose that goes stale. One in this codebase's history claimed two generated
+  // types differed by two fields; they differed by six.
+  //
+  // WHAT TO USE INSTEAD
+  //   - two shapes that only overlap partially -> name the overlap. A type
+  //     alias for the fields the consumer actually reads (`Omit<…>`, `Pick<…>`,
+  //     or a plain interface) lets both shapes satisfy it with no cast, and
+  //     states the requirement where a reader will find it.
+  //   - a value of genuinely unknown shape (a driver internal, a parsed
+  //     payload, a mock) -> a user-defined type guard, `value is T`. Same
+  //     narrowing, but it is earned at runtime rather than asserted, so a shape
+  //     that changes upstream fails loudly at the boundary instead of silently
+  //     three call sites later.
+  //   - a nominal mismatch you cannot restructure -> fix the declaration, or
+  //     make the conversion explicit as a function with a checked body.
+  //
+  // SCOPE. Only the literal `unknown` bridge matches. `x as T` is untouched —
+  // it is checked, and banning it would flag a large amount of legitimate
+  // narrowing. `x as any as T` is not matched either, because `as any` is
+  // already caught by `lint/suspicious/noExplicitAny`; if you have that rule
+  // off, add the alternative here.
+  //
+  // TESTS. This fires in test files too. That is a real cost: mocks and fixtures
+  // are where "bridge a closed generated interface" is most defensible, and
+  // Biome's `overrides` cannot switch a plugin off for a glob (measured against
+  // 2.5 — an override carrying `plugins` does not disable it). Decide per repo
+  // whether test directories are inside the linted set before adopting this one.
+  `$x as unknown as $t` where {
+    register_diagnostic(
+      span = $t,
+      message = "`as unknown as T` disables the assignability check rather than satisfying it — nothing verifies this claim. Name the shape both sides share (Omit/Pick/an interface), or narrow with a `value is T` type guard.",
+      severity = "error"
+    )
+  }
+}
+
 pattern no_glued_timestamps() {
   // Ban gluing a timestamp together from a date string.
   //
@@ -45,12 +97,30 @@ pattern no_glued_timestamps() {
   //
   // SCOPE, AND WHY IT IS SHAPED THIS WAY. GritQL matches code snippets, and a
   // bare template literal is awkward to match structurally — the pattern
-  // language uses backticks as its own delimiters. So this enumerates the three
-  // call shapes glued timestamps actually take in practice rather than matching
-  // every template literal. A glued string assigned to a variable and passed
-  // elsewhere will slip through; the trade is that there are no false positives
-  // at all, and prose in doc comments (including the ones explaining this rule)
-  // is untouched.
+  // language uses backticks as its own delimiters. So this enumerates the call
+  // shapes glued timestamps actually take in practice rather than matching every
+  // template literal. A glued string assigned to a variable and passed elsewhere
+  // will slip through; the trade is that there are no false positives at all,
+  // and prose in doc comments (including the ones explaining this rule) is
+  // untouched.
+  //
+  // THE OFFSET VARIANT. `new Date(`${s}+05:30`)` is the same habit with the zone
+  // spelled as a number, and it is the more tempting one because it looks
+  // deliberate — the author clearly thought about timezones. What they wrote
+  // down is a fact with an expiry date: an offset is the tz database's current
+  // answer for a zone, not the zone itself. Zones change their offsets (Egypt
+  // reinstated DST in 2023; Chile, Morocco, and Samoa have all moved), and when
+  // one does, an IANA name is a package update and a literal offset is a code
+  // edit nobody knows to make.
+  //
+  // The offset branches are restricted to `new Date` and `toDate` on purpose.
+  // The pattern `${x}-10:30` is not inherently date-shaped — it could be a range
+  // label — so the enclosing call is what makes the intent unambiguous. Inside a
+  // Date constructor there is no other thing it could be.
+  //
+  // `toDate` gets its own message because it fails differently: an embedded
+  // offset takes PRECEDENCE over the `timeZone` option, so the argument the
+  // author passed is silently discarded rather than merely redundant.
   or {
     `new Date($arg)` where {
       $arg <: r".*\$\{[^}]*\}T[0-2][0-9]:[0-5][0-9].*",
@@ -73,6 +143,22 @@ pattern no_glued_timestamps() {
       register_diagnostic(
         span = $arg,
         message = "This is a bare calendar date, not an instant — there is no zone to render it in. Format the day key directly, with no timezone.",
+        severity = "error"
+      )
+    },
+    `new Date($arg)` where {
+      $arg <: r".*\$\{[^}]*\}[+-][0-2][0-9]:?[0-5][0-9].*",
+      register_diagnostic(
+        span = $arg,
+        message = "Don't append a numeric UTC offset to a date string. That hard-codes today's offset as source text, so a zone that gains DST (or changes its offset by decree, as several have) becomes a code edit. Use toDate(s, { timeZone }) with an IANA zone name.",
+        severity = "error"
+      )
+    },
+    `toDate($arg, $_)` where {
+      $arg <: r".*\$\{[^}]*\}[+-][0-2][0-9]:?[0-5][0-9].*",
+      register_diagnostic(
+        span = $arg,
+        message = "An embedded offset takes precedence over the timeZone option, so this silently ignores the zone you passed. Drop the offset and let toDate apply the zone.",
         severity = "error"
       )
     }
@@ -116,4 +202,4 @@ pattern no_utc_calendar_day() {
   }
 }
 
-or { no_glued_timestamps(), no_utc_calendar_day() }
+or { no_double_assertion(), no_glued_timestamps(), no_utc_calendar_day() }

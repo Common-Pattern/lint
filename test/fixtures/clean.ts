@@ -35,3 +35,36 @@ export function toISOStringWithoutSlicing(instant: Date) {
 export function templateLiteralsThatAreNotTimestamps(key: string, count: number) {
   return [`${key} is a day key`, `Elapsed: ${count}ms`, `T12:00:00Z is a suffix, not interpolated`];
 }
+
+interface Wide {
+  id: string;
+  createdAt: string;
+}
+
+export function singleAssertionsAreChecked(value: Wide) {
+  // `as T` is not banned by `no-double-assertion`: TypeScript still requires
+  // the two types to be related, so it can narrow or widen but not invent.
+  return [value as Wide, value.id as string];
+}
+
+export function unknownOnItsOwnIsFine(value: Wide) {
+  // Widening to `unknown` is the safe direction and stops there — it is the
+  // second hop, back down to a concrete type, that skips the check.
+  const widened = value as unknown;
+  return widened;
+}
+
+export function joiningTwoTypedFields(date: string, time: string) {
+  // Serializing two independent, already-validated form fields into one wire
+  // value. No instant and no zone: the server decides which moment this is.
+  // Routing it through a date library would force a zone choice in the BROWSER,
+  // which is how you'd introduce the bug rather than prevent it.
+  return `${date}T${time}`;
+}
+
+export function offsetShapesOutsideADateCall(start: string, discount: number) {
+  // `${x}-10:30` is only unambiguous inside a Date constructor. As a plain
+  // string it is a range label or an arithmetic result, so the offset branches
+  // are scoped to the call shapes and these stay legal.
+  return [`${start}-10:30`, `${discount}-05:00 applied`];
+}

@@ -33,12 +33,30 @@
 //
 // SCOPE, AND WHY IT IS SHAPED THIS WAY. GritQL matches code snippets, and a
 // bare template literal is awkward to match structurally — the pattern
-// language uses backticks as its own delimiters. So this enumerates the three
-// call shapes glued timestamps actually take in practice rather than matching
-// every template literal. A glued string assigned to a variable and passed
-// elsewhere will slip through; the trade is that there are no false positives
-// at all, and prose in doc comments (including the ones explaining this rule)
-// is untouched.
+// language uses backticks as its own delimiters. So this enumerates the call
+// shapes glued timestamps actually take in practice rather than matching every
+// template literal. A glued string assigned to a variable and passed elsewhere
+// will slip through; the trade is that there are no false positives at all,
+// and prose in doc comments (including the ones explaining this rule) is
+// untouched.
+//
+// THE OFFSET VARIANT. `new Date(`${s}+05:30`)` is the same habit with the zone
+// spelled as a number, and it is the more tempting one because it looks
+// deliberate — the author clearly thought about timezones. What they wrote
+// down is a fact with an expiry date: an offset is the tz database's current
+// answer for a zone, not the zone itself. Zones change their offsets (Egypt
+// reinstated DST in 2023; Chile, Morocco, and Samoa have all moved), and when
+// one does, an IANA name is a package update and a literal offset is a code
+// edit nobody knows to make.
+//
+// The offset branches are restricted to `new Date` and `toDate` on purpose.
+// The pattern `${x}-10:30` is not inherently date-shaped — it could be a range
+// label — so the enclosing call is what makes the intent unambiguous. Inside a
+// Date constructor there is no other thing it could be.
+//
+// `toDate` gets its own message because it fails differently: an embedded
+// offset takes PRECEDENCE over the `timeZone` option, so the argument the
+// author passed is silently discarded rather than merely redundant.
 or {
   `new Date($arg)` where {
     $arg <: r".*\$\{[^}]*\}T[0-2][0-9]:[0-5][0-9].*",
@@ -61,6 +79,22 @@ or {
     register_diagnostic(
       span = $arg,
       message = "This is a bare calendar date, not an instant — there is no zone to render it in. Format the day key directly, with no timezone.",
+      severity = "error"
+    )
+  },
+  `new Date($arg)` where {
+    $arg <: r".*\$\{[^}]*\}[+-][0-2][0-9]:?[0-5][0-9].*",
+    register_diagnostic(
+      span = $arg,
+      message = "Don't append a numeric UTC offset to a date string. That hard-codes today's offset as source text, so a zone that gains DST (or changes its offset by decree, as several have) becomes a code edit. Use toDate(s, { timeZone }) with an IANA zone name.",
+      severity = "error"
+    )
+  },
+  `toDate($arg, $_)` where {
+    $arg <: r".*\$\{[^}]*\}[+-][0-2][0-9]:?[0-5][0-9].*",
+    register_diagnostic(
+      span = $arg,
+      message = "An embedded offset takes precedence over the timeZone option, so this silently ignores the zone you passed. Drop the offset and let toDate apply the zone.",
       severity = "error"
     )
   }
