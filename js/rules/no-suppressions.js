@@ -42,8 +42,14 @@ export default {
         for (const comment of context.sourceCode.getAllComments()) {
           for (const { re, what } of PATTERNS) {
             if (!re.test(comment.value)) continue;
+            // `loc`, not `node`. A comment token is not an AST node, and
+            // ESLint's report translator documents `node` as one — passing a
+            // token happens to work under oxlint and is not guaranteed to
+            // under ESLint. Since running unmodified under both is the whole
+            // premise of this package, the portable spelling is the correct
+            // one even where the other currently works.
             context.report({
-              node: comment,
+              loc: comment.loc,
               message: `\`${what}\` suppresses a check rather than satisfying it. Fix the root cause — a suppression is a claim that the tool is wrong, and it goes stale silently while the code around it changes.`,
             });
             break;
