@@ -104,7 +104,8 @@ Actions (so no long-lived npm token either).
 
 ### `no-utc-calendar-day`
 
-Bans `.toISOString().slice(…)` — deriving a calendar date from an instant.
+Bans `.toISOString().slice(…)` and `.toISOString().split(…)` — deriving a
+calendar date from an instant by string surgery.
 
 It reads as "today". It means *the UTC calendar day*, which is a different day
 from the user's for a window as wide as their UTC offset: 05:30 every morning
@@ -116,6 +117,14 @@ This one is unusually good at hiding. Test suites commonly pin `TZ=UTC`,
 production is commonly a UTC datacentre, and nobody develops at 03:00 — so the
 expression is correct in every context anyone inspects it in, and wrong only in
 the answer given to the user.
+
+**Both spellings are one rule on purpose.** `.toISOString().split("T")[0]` is
+the same bug in different clothes, and in one codebase it survived months of
+the `.slice` ban precisely because the rule looked like it covered the class and
+covered one spelling of it. `[1]` is no better than `[0]` — that is the UTC wall
+clock. The receiver is what makes this unambiguous, so there is no check on the
+arguments: `formatInTimeZone(instant, tz, "yyyy-MM-dd HH:mm").split(" ")` has
+already chosen a zone and stays legal.
 
 ### `no-glued-timestamps`
 
@@ -149,17 +158,49 @@ The `toDate` form fails a second way worth its own message: an embedded offset
 takes **precedence** over the `timeZone` option, so the zone argument isn't
 merely redundant, it is silently discarded.
 
+**It also bans the `TZDate` variant** — `` new TZDate(`${date}T${time}:00`, tz) ``
+and its `+`-concatenated equivalent. `@date-fns/tz` gives `TZDate` two
+constructors that look interchangeable and are not: `new TZDate(string, zone)`
+parses the string in the **ambient** zone (the browser's, or the datacentre's)
+and only re-tags the result for display, while
+`TZDate.tz(zone, year, monthIndex, day, hours, minutes)` reads calendar
+components *in that zone*. So the glued form is wrong by the tenant's UTC offset
+while reading as the careful, zone-aware thing to do — measured at +5:30 for an
+IST org, where 9:30 PM was stored as 21:30Z and rendered back as 3:00 AM the
+next day. The named zone in the call is what makes it convincing: the author
+demonstrably thought about timezones and still got the opposite of what they
+asked for.
+
+This does **not** ban the string constructor. `new TZDate(iso, zone)` over an
+unambiguous ISO string carrying a `Z` is legitimate — it parses as UTC whatever
+the ambient zone is, and the zone argument only chooses how it renders. Only a
+string *glued at the call site* is banned, because that string carries no zone
+and therefore inherits one by accident. Two limits keep it honest: only the
+two-argument form matches (a one-argument `new TZDate(x)` has no zone to be
+wrong about), and the concatenation branch requires a **string literal** operand
+so that `new TZDate(base + offsetMs, zone)` — ordinary epoch arithmetic through
+the millisecond constructor — stays legal.
+
 Matches call shapes (`new Date(…)`, `fromZonedTime(…)`, `formatDateTime(…)`,
-and `toDate(…)` for the offset form) rather than every template literal, for
-the reason in the trade-off note above. The offset branches are deliberately
-scoped to `new Date`/`toDate`: `` `${x}-10:30` `` is not inherently date-shaped
-— it could be a range label — so the enclosing call is what makes the intent
-unambiguous.
+`new TZDate(…, zone)`, and `toDate(…)` for the offset form) rather than every
+template literal, for the reason in the trade-off note above. The offset
+branches are deliberately scoped to `new Date`/`toDate`: `` `${x}-10:30` `` is
+not inherently date-shaped — it could be a range label — so the enclosing call
+is what makes the intent unambiguous.
 
 Not matched, and deliberately legal: `` `${date}T${time}` ``, joining two
 already-validated fields into a wire value. There is no instant and no zone in
 it, and "fixing" it with a date library would force a zone choice at the wrong
 layer.
+
+Also not matched: a glued string assigned to a variable and passed in one line
+later (``const s = `${d}T${t}`; new TZDate(s, zone)``). This is *expressible* —
+``$program <: contains `$arg = $init` where { $init <: r".*\$\{.*" }`` fires on
+exactly that — but GritQL has no scope resolution, so the match is by **name**
+across the whole file. A `value` glued into a label in one function then
+condemns an unrelated `value` holding a real ISO constant in another, and names
+like `value`, `key`, `iso` and `start` collide constantly. Caught at the call
+site or not at all.
 
 ### `no-double-assertion`
 

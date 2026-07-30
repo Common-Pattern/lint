@@ -20,15 +20,37 @@
 //   - shifting a `yyyy-MM-dd` key -> calendar arithmetic on the key, never
 //     `addDays` on an instant: adding 24h drifts across a DST boundary.
 //
-// SCOPE. Only a `.slice(…)` applied directly to a `.toISOString()` result
+// SCOPE. Only string surgery applied directly to a `.toISOString()` result
 // matches. The bare form — `row.created_at.slice(0, 10)` on a string column —
 // is deliberately not matched: it is indistinguishable at the AST level from
 // `array.slice(0, 10)` meaning "the first ten", and a rule that needs
 // suppressions to pass is worse than no rule.
-`$instant.toISOString().slice($_)` where {
-  register_diagnostic(
-    span = $instant,
-    message = "This is the UTC calendar day, not the user's or tenant's. Derive the day in an explicit timezone — e.g. formatInTimeZone(value, timeZone, 'yyyy-MM-dd') — rather than slicing an ISO string.",
-    severity = "error"
-  )
+//
+// THE `.split("T")` SPELLING. `.toISOString().split("T")[0]` is the same bug
+// wearing different clothes, and it cost real debugging time *after* the
+// `.slice` form was banned — the rule looked like it covered the class, and
+// covered one spelling of it. Both halves of the split are wrong for the same
+// reason: `[0]` is the UTC calendar day, `[1]` is the UTC wall clock. The
+// receiver is what makes this unambiguous, so no argument check is needed —
+// `formatInTimeZone(instant, tz, "yyyy-MM-dd HH:mm").split(" ")` has already
+// chosen a zone and stays legal.
+//
+// A rule per spelling would keep losing this race, so both branches live in
+// one rule: the objection is to deriving a calendar day from an ISO string at
+// all, not to a particular string method.
+or {
+  `$instant.toISOString().slice($_)` where {
+    register_diagnostic(
+      span = $instant,
+      message = "This is the UTC calendar day, not the user's or tenant's. Derive the day in an explicit timezone — e.g. formatInTimeZone(value, timeZone, 'yyyy-MM-dd') — rather than slicing an ISO string.",
+      severity = "error"
+    )
+  },
+  `$instant.toISOString().split($_)` where {
+    register_diagnostic(
+      span = $instant,
+      message = "Splitting an ISO string on 'T' gives the UTC calendar day (and the UTC wall clock), not the user's or tenant's. Derive the day in an explicit timezone — e.g. formatInTimeZone(value, timeZone, 'yyyy-MM-dd').",
+      severity = "error"
+    )
+  }
 }

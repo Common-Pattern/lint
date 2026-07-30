@@ -8,6 +8,10 @@ declare function parseISO(value: string): Date;
 declare function formatInTimeZone(value: unknown, timeZone: string, fmt: string): string;
 declare function formatDayKey(key: string, fmt: string): string;
 declare function formatDateTime(value: unknown, timeZone: string, fmt: string): string;
+declare class TZDate {
+  constructor(value: string | number | Date, timeZone: string);
+  static tz(timeZone: string, year: number, monthIndex: number, day: number, hours: number, minutes: number): Date;
+}
 
 export function correctDayDerivation(instant: Date, timeZone: string) {
   return formatInTimeZone(instant, timeZone, "yyyy-MM-dd");
@@ -30,6 +34,33 @@ export function arraySliceIsNotADateSlice<T>(items: T[]) {
 export function toISOStringWithoutSlicing(instant: Date) {
   // A full ISO timestamp is a legitimate way to store an instant.
   return instant.toISOString();
+}
+
+export function splittingSomethingAlreadyProjected(instant: Date, timeZone: string) {
+  // `.split` is only banned on a `.toISOString()` receiver. This one has
+  // already chosen a zone, so taking the date half of it is correct.
+  return formatInTimeZone(instant, timeZone, "yyyy-MM-dd HH:mm").split(" ")[0];
+}
+
+export function splittingAStringThatIsNotAnInstant(csvRow: string) {
+  // Nothing date-shaped about this at all.
+  return csvRow.split(",")[0];
+}
+
+export function tzDateNearMisses(instant: Date, timeZone: string, epochMs: number, offsetMs: number) {
+  // The COMPONENT constructor is the fix, not the bug: it reads the calendar
+  // fields in `timeZone`, with no ambient zone in the computation.
+  const a = TZDate.tz(timeZone, 2026, 6, 30, 18, 30);
+  // An unambiguous ISO string carrying a `Z` is parsed as UTC whatever the
+  // ambient zone is; the zone argument only chooses how it renders. Legal.
+  const b = new TZDate("2026-07-30T13:00:00Z", timeZone);
+  // An instant is an instant. Re-tagging one for display is the whole point of
+  // the class.
+  const c = new TZDate(instant, timeZone);
+  // `+` inside a TZDate call is ordinary epoch arithmetic — the millisecond
+  // constructor — so the concatenation branch requires a string literal operand.
+  const d = new TZDate(epochMs + offsetMs, timeZone);
+  return [a, b, c, d];
 }
 
 export function templateLiteralsThatAreNotTimestamps(key: string, count: number) {

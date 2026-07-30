@@ -18,7 +18,9 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const pluginsDir = join(root, "plugins");
-const OUT = join(pluginsDir, "all.grit");
+// `test/run.sh` points this at a temp file so it can compare the generated
+// output against the committed one without overwriting it first.
+const OUT = process.env.ALL_GRIT_OUT || join(pluginsDir, "all.grit");
 
 const files = readdirSync(pluginsDir)
   .filter((f) => f.endsWith(".grit") && f !== "all.grit")
