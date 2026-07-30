@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "jsPlugins": ["./js/index.js"],
+  "categories": {
+    "correctness": "off",
+    "perf": "off",
+    "pedantic": "off",
+    "restriction": "off",
+    "style": "off",
+    "suspicious": "off"
+  },
+  "rules": {
+    "common-pattern/no-utc-calendar-day": "error",
+    "common-pattern/no-glued-timestamps": "error",
+    "common-pattern/no-glued-timestamp-via-variable": "error",
+    "common-pattern/no-double-assertion": "error",
+    "common-pattern/no-suppressions": "error"
+  }
+}

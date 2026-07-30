@@ -1,7 +1,7 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
   "plugins": [
-    "./plugins/all.grit"
+    "./biome/all.grit"
   ],
   "vcs": {
     "enabled": false
