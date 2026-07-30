@@ -9,7 +9,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-EXPECTED_VIOLATIONS=10
+EXPECTED_VIOLATIONS=15
 
 # Prefer the locally installed Biome (`pnpm install` first). `BIOME_BIN` lets
 # CI or a different package manager point at its own binary.
@@ -28,10 +28,19 @@ run_biome() {
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
+# Compare the committed artifact against a freshly generated one, rather than
+# asking git whether the file is dirty. Same assertion on CI's clean checkout,
+# but it also holds while you are mid-change: the git form reported "stale" for
+# any edit that was correctly regenerated and simply not committed yet, so the
+# documented `pnpm build && pnpm test` loop could not go green until after the
+# commit it was supposed to gate.
 echo "==> plugins/all.grit is in sync with the individual plugins"
-node scripts/build-all.mjs >/dev/null
-if ! git diff --quiet -- plugins/all.grit 2>/dev/null; then
-  fail "plugins/all.grit is stale — run 'node scripts/build-all.mjs' and commit the result"
+generated="$(mktemp)"
+trap 'rm -f "$generated"' EXIT
+ALL_GRIT_OUT="$generated" node scripts/build-all.mjs >/dev/null
+if ! diff -q "$generated" plugins/all.grit >/dev/null; then
+  diff -u plugins/all.grit "$generated" || true
+  fail "plugins/all.grit is stale — run 'pnpm build' and commit the result"
 fi
 echo "    ok"
 

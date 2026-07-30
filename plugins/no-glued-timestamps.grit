@@ -57,7 +57,64 @@
 // `toDate` gets its own message because it fails differently: an embedded
 // offset takes PRECEDENCE over the `timeZone` option, so the argument the
 // author passed is silently discarded rather than merely redundant.
+//
+// THE `TZDate` VARIANT, AND WHY IT IS THE WORST OF THEM. `@date-fns/tz`'s
+// `TZDate` has two constructors that look interchangeable and are not.
+// `new TZDate(string, zone)` parses the string in the AMBIENT zone — the
+// browser's, or the datacentre's — and then only re-tags the result for
+// display. `TZDate.tz(zone, year, monthIndex, day, hours, minutes)` reads
+// calendar components *in that zone*, with no ambient zone anywhere in the
+// computation. So `` new TZDate(`${date}T${time}:00`, tz) `` is wrong by the
+// tenant's UTC offset while reading as the careful, zone-aware thing to do:
+// measured at +5:30 for an IST org, where 9:30 PM was stored as 21:30Z and
+// rendered back as 3:00 AM the next day. The named zone in the call is what
+// makes it so convincing — the author demonstrably thought about timezones and
+// still got the opposite of what they asked for.
+//
+// This branch does NOT ban the string constructor. `new TZDate(iso, zone)`
+// over an unambiguous ISO string carrying a `Z` is legitimate: the string is
+// parsed as UTC regardless of the ambient zone, and the zone argument only
+// chooses how it renders. What is bannable is a string GLUED together at the
+// call site — a template literal, or a concatenation with a string literal in
+// it — because that string has no zone in it and therefore inherits one by
+// accident.
+//
+// Two deliberate limits:
+//
+//   - Only the two-argument form matches. A one-argument `new TZDate(x)` has
+//     no zone to be wrong about.
+//   - The concatenation branch requires a STRING literal operand. `+` inside a
+//     TZDate call is otherwise ordinary epoch arithmetic —
+//     `new TZDate(base + offsetMs, zone)` is the millisecond constructor and
+//     is fine — and a rule that flags it teaches people to ignore the rule.
+//
+// WHAT IS NOT MATCHED, AND WHY NOT. A glued string assigned to a variable and
+// then passed in (`const s = `${d}T${t}`; new TZDate(s, zone)`) is not caught,
+// and the attempt is worth recording so nobody repeats it. It is expressible —
+// `$program <: contains `$arg = $init` where { $init <: r".*\$\{.*" }` does
+// fire on exactly that — but GritQL has no scope resolution, so the match is by
+// NAME across the whole file. A `value` glued into a label in one function then
+// condemns an unrelated `value` holding a real ISO constant in another, which
+// is precisely the false positive this rule cannot afford. Names like `value`,
+// `key`, `iso` and `start` collide constantly in real files. Caught at the call
+// site or not at all.
 or {
+  `new TZDate($arg, $_)` where {
+    $arg <: r".*\$\{.*",
+    register_diagnostic(
+      span = $arg,
+      message = "new TZDate(string, zone) parses in the AMBIENT zone and only re-tags for display, so a glued wall-clock string lands off by the tenant's UTC offset. Use TZDate.tz(zone, year, monthIndex, day, hours, minutes) — the component constructor — or orgWallClockToInstant.",
+      severity = "error"
+    )
+  },
+  `new TZDate($arg, $_)` where {
+    $arg <: contains bubble or { `$_ + $s`, `$s + $_` } where { $s <: r"[\"'].*" },
+    register_diagnostic(
+      span = $arg,
+      message = "new TZDate(string, zone) parses in the AMBIENT zone and only re-tags for display, so a concatenated wall-clock string lands off by the tenant's UTC offset. Use TZDate.tz(zone, year, monthIndex, day, hours, minutes) — the component constructor — or orgWallClockToInstant.",
+      severity = "error"
+    )
+  },
   `new Date($arg)` where {
     $arg <: r".*\$\{[^}]*\}T[0-2][0-9]:[0-5][0-9].*",
     register_diagnostic(
