@@ -48,7 +48,7 @@
     {
       "files": ["**/date-compare-*.ts"],
       "rules": {
-        "common-pattern/no-date-string-comparison": ["error", { "functions": ["orgToday"] }]
+        "common-pattern/no-date-string-comparison": ["error", { "functions": ["orgToday"], "properties": ["date", "createdAt"] }]
       }
     },
     {

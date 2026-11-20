@@ -35,7 +35,7 @@ them, and nothing else.
 | [`no-utc-calendar-day`](#no-utc-calendar-day) | deriving a calendar day from an instant by slicing its ISO string |
 | [`no-glued-timestamps`](#no-glued-timestamps) | building a timestamp by interpolation, at the call site |
 | [`no-glued-timestamp-via-variable`](#no-glued-timestamp-via-variable) | the same glue, reaching a date consumer through a variable |
-| [`no-date-string-comparison`](#no-date-string-comparison) | ordering dates with `<` / `>` on their strings |
+| [`no-date-string-comparison`](#no-date-string-comparison) | ordering dates with `<` / `>`, `localeCompare` or a bare `.sort()` on their strings |
 | [`no-double-assertion`](#no-double-assertion) | `x as unknown as T` |
 | [`no-error-message-to-response`](#no-error-message-to-response) | a caught error, or its `.message`, sent to the client |
 | [`no-suppressions`](#no-suppressions) | every spelling of "ignore this diagnostic" |
@@ -185,7 +185,9 @@ resolution is a real boundary and this rule sits on the near side of it.
 
 ### `no-date-string-comparison`
 
-Bans `<`, `<=`, `>` and `>=` when either side is provably a date string:
+Bans `<`, `<=`, `>` and `>=` when either side is provably a date string, and
+the same ordering spelled as a sort — `a.localeCompare(b)`, or a bare `.sort()` /
+`.toSorted()` on an array of date strings:
 
 ```ts
 if (holiday.endDate < format(start, "yyyy-MM-dd")) continue;
@@ -217,12 +219,49 @@ those, resolved through scope analysis and followed through aliases; and a `??`,
 "common-pattern/no-date-string-comparison": ["error", { "functions": ["orgToday", "toDayKey"] }]
 ```
 
-Not matched, deliberately: object fields (`order.start < order.finish`),
-parameters, and anything else only a type checker could classify. JS plugins
-get no types, and guessing from names fires on numbers and `Date` objects
-constantly. A method named `format` is not matched either, because
+**Sorts.** `localeCompare` is reported when its receiver or its argument is a
+date string by the rules above. A bare `.sort()` or `.toSorted()` is reported
+when the array is built from date strings: an array literal holding one, a
+`.map`/`.flatMap`/`Array.from` callback that returns one (an expression body, a
+top-level `return`, or a configured helper passed by name), a spread, a
+`new Set(…)`, or `.filter`/`.slice`/`.concat`/`.reverse`/`.sort` of such an
+array, followed through bindings. The parameters of a comparator passed to
+`.sort`/`.toSorted` on such an array, and the first parameter of an element
+callback (`.filter`, `.map`, `.some`, …) on one, are date strings too, so
+`dates.sort((a, b) => a.localeCompare(b))` and `(a, b) => (a < b ? -1 : 1)` are
+both reported. The fix is a comparator that parses:
+`(a, b) => compareAsc(parseISO(a), parseISO(b))`, or a project helper that does
+the same on day keys.
+
+```ts
+const dates = bookings.map((b) => toDayKey(b.slotStart, timezone));
+dates.sort();
+```
+
+**Properties, opt-in.** The `properties` option names object properties that
+hold date strings throughout a codebase. A member access ending in one
+(`a.date`, `row?.period_start`, `x["createdAt"]`) then counts as a date string
+everywhere the rule looks — in `<`/`>`, in `localeCompare`, and inside a
+`.map` that builds a sorted array — so the commonest sort shape,
+`.sort((a, b) => a.date.localeCompare(b.date))`, is reported:
+
+```json
+"common-pattern/no-date-string-comparison": ["error", { "properties": ["date", "finish", "period_start"] }]
+```
+
+There is no default list. Whether `start` is a day key, an instant string or a
+`Date` is a fact about one codebase, and a name that is a `Date` anywhere it is
+compared with `<` turns into a false positive there. List only names that are
+strings wherever they appear.
+
+Not matched, deliberately: object fields not named in `properties`
+(`order.start < order.finish`), parameters other than the array-element ones
+above, and anything else only a type checker could classify. JS plugins get no
+types, and guessing from names fires on numbers and `Date` objects constantly.
+A method named `format` is not matched either, because
 `Intl.NumberFormat#format` shares it. Equality is allowed: two day keys are
-equal exactly when their days are.
+equal exactly when their days are. `localeCompare` on names and other strings
+with no date source stays legal.
 
 ### `no-double-assertion`
 

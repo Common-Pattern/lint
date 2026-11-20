@@ -24,7 +24,7 @@ EXPECTED_WIDTH_VIOLATIONS=16
 EXPECTED_HOST_VIOLATIONS=16
 EXPECTED_COMMENT_VIOLATIONS=10
 EXPECTED_COMMENT_JS_VIOLATIONS=3
-EXPECTED_DATE_COMPARE_VIOLATIONS=13
+EXPECTED_DATE_COMPARE_VIOLATIONS=26
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
@@ -42,7 +42,13 @@ fi
 # oxlint exits non-zero when it reports anything, which is the whole point of
 # it — `|| true` keeps `set -e` from ending the run at the first fixture that
 # works correctly.
-ox_count() { "${OXLINT[@]}" "$1" 2>&1 | grep -c 'common-pattern(' || true; }
+ox_count() {
+  local out
+  out="$(mktemp)"
+  "${OXLINT[@]}" "$1" >"$out" 2>&1 || true
+  grep -c 'common-pattern(' "$out" || true
+  rm -f "$out"
+}
 
 expect() {
   local label="$1" actual="$2" want="$3"
@@ -130,10 +136,10 @@ expect "comments-clean.mjs     " "$(ox_count test/fixtures/comments-clean.mjs)" 
 # Switched on by an override rather than at the top level, because the override
 # is where the `functions` option is passed, and the fixture has to exercise the
 # configured-helper path.
-echo "==> no-date-string-comparison: literals, formatter calls, configured helpers, and the bindings they flow through"
+echo "==> no-date-string-comparison: literals, formatter calls, configured helpers and properties, the bindings they flow through, localeCompare, and sorts"
 expect "date-compare-violations.ts" "$(ox_count test/fixtures/date-compare-violations.ts)" "$EXPECTED_DATE_COMPARE_VIOLATIONS"
 
-echo '==> ...and does NOT fire on parsed dates, numbers, Date objects, equality, a formatter method, an unconfigured helper, or object fields'
+echo '==> ...and does NOT fire on parsed dates, numbers, Date objects, equality, a formatter method, an unconfigured helper, unlisted object fields, names, or a sort with a comparator'
 expect "date-compare-clean.ts     " "$(ox_count test/fixtures/date-compare-clean.ts)" 0
 
 echo "OK"
