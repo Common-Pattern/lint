@@ -22,8 +22,10 @@
  * comparison then fails loudly (`Invalid Date`) on a shape it does not expect
  * instead of returning an answer.
  *
- * WHAT IS CHECKED. A relational comparison (`<`, `<=`, `>`, `>=`) where either
- * operand is provably a date string:
+ * WHAT IS CHECKED. A relational comparison (`<`, `<=`, `>`, `>=`), or an
+ * `a.localeCompare(b)`, where either operand is provably a date string; and a
+ * bare `.sort()` or `.toSorted()`, with no comparator, on an array built from
+ * date strings. An operand is a date string when it is:
  *
  * - a string literal, or a template literal with no expressions, that starts
  *   with an ISO date (`"2026-11-05"`, `"2026-11-05T09:00:00Z"`);
@@ -40,16 +42,33 @@
  *   and followed through aliases, as `no-glued-timestamp-via-variable` does.
  *   One date-string write is enough;
  * - a conditional or logical expression (`a ?? b`, `c ? a : b`) with a
- *   date-string branch.
+ *   date-string branch;
+ * - a member access, optional or not, ending in a property named in the
+ *   `properties` option (`a.date`, `row?.period_start`). There is no default
+ *   list: which names hold date strings is a fact about one codebase;
+ * - a parameter of a `.sort`/`.toSorted` comparator, or the first parameter of
+ *   an element callback (`.filter`, `.map`, `.some`, `.find`, ...), called on
+ *   an array built from date strings.
  *
- * WHAT IS DELIBERATELY NOT CHECKED. Object fields (`order.start < order.end`),
- * function parameters, and anything else whose string-ness only a type checker
+ * An array is built from date strings when it is an array literal holding
+ * one; a `.map`, `.flatMap` or `Array.from` whose callback returns one (from
+ * an expression body, a top-level `return`, or a configured helper passed by
+ * name); a spread or `new Set(...)` of such an array; `.filter`, `.slice`,
+ * `.concat`, `.reverse`, `.toReversed`, `.sort` or `.toSorted` of one; or a
+ * binding written from any of those.
+ *
+ * WHAT IS DELIBERATELY NOT CHECKED. Object fields not named in `properties`
+ * (`order.start < order.end`), function parameters other than the array
+ * elements above, and anything else whose string-ness only a type checker
  * could establish. oxlint's JS plugins get no type information, and guessing
  * from names (`start`, `date`, `key`) collides with numbers, `Date` objects and
  * unrelated strings constantly. A rule with that false-positive rate gets
- * switched off, and a switched-off rule protects nothing. Equality (`===`) is
- * not checked either: two day keys are equal exactly when their days are, and
- * equality is how a `Map` keyed by day already works.
+ * switched off, and a switched-off rule protects nothing; `properties` is
+ * opt-in for that reason. Arrays from `[...map.keys()]`, bindings from
+ * `for...of`, and a callback's `return` nested inside an inner block are not
+ * followed. Equality (`===`) is not checked either: two day keys are equal
+ * exactly when their days are, and equality is how a `Map` keyed by day
+ * already works.
  */
 
 import { resolveVariable, writesTo } from "../lib/scope.js";
@@ -68,6 +87,31 @@ const FORMATTING_FUNCTIONS = [
 ];
 
 const FORMATTING_METHODS = new Set(["toISOString", "toJSON", "toDateString", "toLocaleDateString"]);
+
+const SORT_METHODS = new Set(["sort", "toSorted"]);
+
+const ELEMENT_CALLBACK_METHODS = new Set([
+  "every",
+  "filter",
+  "find",
+  "findIndex",
+  "findLast",
+  "findLastIndex",
+  "flatMap",
+  "forEach",
+  "map",
+  "some",
+]);
+
+const ARRAY_PRESERVING_METHODS = new Set([
+  "concat",
+  "filter",
+  "reverse",
+  "slice",
+  "sort",
+  "toReversed",
+  "toSorted",
+]);
 
 const ISO_DATE_PREFIX = /^\d{4}-\d{2}-\d{2}/;
 
@@ -94,11 +138,25 @@ function unwrap(node) {
       current.type === "TSSatisfiesExpression" ||
       current.type === "TSNonNullExpression" ||
       current.type === "ParenthesizedExpression" ||
+      current.type === "ChainExpression" ||
       current.type === "AwaitExpression")
   ) {
     current = current.type === "AwaitExpression" ? current.argument : current.expression;
   }
   return current;
+}
+
+function propertyName(member) {
+  if (member?.type !== "MemberExpression") return null;
+  if (!member.computed && member.property?.type === "Identifier") return member.property.name;
+  if (member.computed && member.property?.type === "Literal" && typeof member.property.value === "string") {
+    return member.property.value;
+  }
+  return null;
+}
+
+function isFunction(node) {
+  return node?.type === "ArrowFunctionExpression" || node?.type === "FunctionExpression";
 }
 
 export default {
@@ -109,6 +167,7 @@ export default {
         type: "object",
         properties: {
           functions: { type: "array", items: { type: "string" }, uniqueItems: true },
+          properties: { type: "array", items: { type: "string" }, uniqueItems: true },
         },
         additionalProperties: false,
       },
@@ -118,6 +177,93 @@ export default {
     const sourceCode = context.sourceCode;
     const extra = context.options?.[0]?.functions ?? [];
     const functions = new Set([...FORMATTING_FUNCTIONS, ...extra]);
+    const properties = new Set(context.options?.[0]?.properties ?? []);
+
+    function returnSourceOf(callback, seen) {
+      const fn = unwrap(callback);
+      if (fn?.type === "Identifier") return functions.has(fn.name) ? `${fn.name}()` : null;
+      if (!isFunction(fn)) return null;
+      if (fn.body?.type !== "BlockStatement") return sourceOf(fn.body, seen);
+      for (const statement of fn.body.body) {
+        if (statement.type !== "ReturnStatement" || statement.argument == null) continue;
+        const found = sourceOf(statement.argument, seen);
+        if (found != null) return found;
+      }
+      return null;
+    }
+
+    function arraySourceOf(node, seen) {
+      const expr = unwrap(node);
+      if (expr == null) return null;
+
+      if (expr.type === "ArrayExpression") {
+        for (const element of expr.elements) {
+          if (element == null) continue;
+          const found =
+            element.type === "SpreadElement" ? arraySourceOf(element.argument, seen) : sourceOf(element, new Set());
+          if (found != null) return found;
+        }
+        return null;
+      }
+
+      if (expr.type === "NewExpression") {
+        return expr.callee?.type === "Identifier" && expr.callee.name === "Set" && expr.arguments[0] != null
+          ? arraySourceOf(expr.arguments[0], seen)
+          : null;
+      }
+
+      if (expr.type === "CallExpression") {
+        const callee = expr.callee;
+        const method = methodName(callee);
+        if (method == null) return null;
+        if (callee.object?.type === "Identifier" && callee.object.name === "Array" && method === "from") {
+          if (expr.arguments[1] != null) return returnSourceOf(expr.arguments[1], new Set());
+          return expr.arguments[0] != null ? arraySourceOf(expr.arguments[0], seen) : null;
+        }
+        if (method === "map" || method === "flatMap") {
+          return expr.arguments[0] != null ? returnSourceOf(expr.arguments[0], new Set()) : null;
+        }
+        return ARRAY_PRESERVING_METHODS.has(method) ? arraySourceOf(callee.object, seen) : null;
+      }
+
+      if (expr.type === "ConditionalExpression") {
+        return arraySourceOf(expr.consequent, seen) ?? arraySourceOf(expr.alternate, seen);
+      }
+
+      if (expr.type === "LogicalExpression") {
+        return arraySourceOf(expr.left, seen) ?? arraySourceOf(expr.right, seen);
+      }
+
+      if (expr.type === "Identifier") {
+        const variable = resolveVariable(sourceCode, expr);
+        if (variable == null || seen.has(variable)) return null;
+        seen.add(variable);
+        for (const write of writesTo(variable)) {
+          const found = arraySourceOf(write, seen);
+          if (found != null) return found;
+        }
+      }
+
+      return null;
+    }
+
+    function elementParameterSourceOf(variable) {
+      for (const def of variable.defs ?? []) {
+        if (def.type !== "Parameter" || !isFunction(def.node)) continue;
+        const fn = def.node;
+        const call = fn.parent;
+        if (call?.type !== "CallExpression" || call.arguments[0]?.start !== fn.start) continue;
+        const method = methodName(call.callee);
+        const index = fn.params.findIndex((param) => param.type === "Identifier" && param.name === variable.name);
+        const isElement = SORT_METHODS.has(method)
+          ? index === 0 || index === 1
+          : ELEMENT_CALLBACK_METHODS.has(method) && index === 0;
+        if (!isElement) continue;
+        const found = arraySourceOf(call.callee.object, new Set());
+        if (found != null) return `an element of an array built from ${found}`;
+      }
+      return null;
+    }
 
     function sourceOf(node, seen) {
       const expr = unwrap(node);
@@ -130,6 +276,11 @@ export default {
         if (callee?.type === "Identifier") return functions.has(callee.name) ? `${callee.name}()` : null;
         const method = methodName(callee);
         return method != null && FORMATTING_METHODS.has(method) ? `.${method}()` : null;
+      }
+
+      if (expr.type === "MemberExpression") {
+        const name = propertyName(expr);
+        return name != null && properties.has(name) ? `the \`${name}\` property` : null;
       }
 
       if (expr.type === "ConditionalExpression") {
@@ -148,10 +299,15 @@ export default {
           const found = sourceOf(write, seen);
           if (found != null) return found;
         }
+        return elementParameterSourceOf(variable);
       }
 
       return null;
     }
+
+    const parseAdvice =
+      "Parse both sides and compare the dates (`compareAsc(parseISO(a), parseISO(b))`), " +
+      "or use a comparator that does the same for day keys.";
 
     return {
       BinaryExpression(node) {
@@ -165,6 +321,35 @@ export default {
             "which orders dates only while both sides share one zero-padded ISO shape. " +
             "Parse both sides and compare the dates (`isBefore`, `isAfter`, `max`, `min`, `compareAsc`).",
         });
+      },
+      CallExpression(node) {
+        const method = methodName(node.callee);
+        if (method === "localeCompare") {
+          const source =
+            sourceOf(node.callee.object, new Set()) ??
+            (node.arguments[0] != null ? sourceOf(node.arguments[0], new Set()) : null);
+          if (source == null) return;
+          context.report({
+            node,
+            message:
+              `\`localeCompare\` orders a date string from ${source} as text, ` +
+              "which orders dates only while both sides share one zero-padded ISO shape. " +
+              parseAdvice,
+          });
+          return;
+        }
+        if (SORT_METHODS.has(method) && node.arguments.length === 0) {
+          const source = arraySourceOf(node.callee.object, new Set());
+          if (source == null) return;
+          context.report({
+            node,
+            message:
+              `\`.${method}()\` with no comparator orders date strings from ${source} by UTF-16 code unit, ` +
+              "which orders dates only while every element shares one zero-padded ISO shape. " +
+              "Pass a comparator that parses and compares the dates " +
+              "(`(a, b) => compareAsc(parseISO(a), parseISO(b))`), or one that does the same for day keys.",
+          });
+        }
       },
     };
   },

@@ -60,3 +60,50 @@ export function siblingWithTheGlue(start: Date) {
 export function templateWithExpressions(prefix: string, label: string) {
   return label < `${prefix}2026-11-05`;
 }
+
+interface Member {
+  name: string;
+  joinedOn: string;
+}
+
+declare function compareAsc(a: Date, b: Date): number;
+
+export function localeCompareOnNames(members: Member[]) {
+  return members.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function localeCompareOnAnUnlistedProperty(members: Member[]) {
+  return members.toSorted((a, b) => a.joinedOn.localeCompare(b.joinedOn));
+}
+
+export function localeCompareOnParameters(names: string[]) {
+  return names.sort((a, b) => a.localeCompare(b));
+}
+
+export function localeCompareOnANonIsoLiteral(label: string) {
+  return label.localeCompare("b");
+}
+
+export function parsedComparator(days: string[]) {
+  return days.sort((a, b) => compareAsc(parseISO(a), parseISO(b)));
+}
+
+export function bareSortOfNames(members: Member[]) {
+  return members.map((m) => m.name).sort();
+}
+
+export function bareSortOfAnUnconfiguredHelper(starts: Date[]) {
+  return starts.map((s) => toDayKey(s, "UTC")).sort();
+}
+
+export function sortWithAComparatorIsNotBare(starts: Date[]) {
+  return starts.map((s) => format(s, "yyyy-MM-dd")).sort((a, b) => compareAsc(parseISO(a), parseISO(b)));
+}
+
+export function parameterOfAnUnrelatedCallback(members: Member[], keys: string[]) {
+  return keys.sort((a, b) => a.localeCompare(b)) && members.map((m) => format(new Date(), m.name));
+}
+
+export function formattedSortOfObjects(starts: Date[]) {
+  return starts.map((s) => ({ day: format(s, "yyyy-MM-dd") })).sort();
+}

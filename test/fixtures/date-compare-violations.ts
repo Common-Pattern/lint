@@ -70,3 +70,70 @@ export function conditionalBranch(h: Holiday, start: Date, open: boolean) {
 export function throughAnAssertion(h: Holiday, start: Date) {
   return h.startDate < (format(start, "yyyy-MM-dd") as string);
 }
+
+interface Visit {
+  date: string;
+  createdAt: string;
+  name: string;
+}
+
+export function localeCompareAgainstAFormatter(h: Holiday, start: Date) {
+  return h.startDate.localeCompare(format(start, "yyyy-MM-dd"));
+}
+
+export function localeCompareOnAFormattedReceiver(h: Holiday, start: Date) {
+  return start.toISOString().localeCompare(h.startDate);
+}
+
+export function localeCompareThroughABinding(h: Holiday, zone: string) {
+  const today = orgToday(zone);
+  return today.localeCompare(h.endDate);
+}
+
+export function localeCompareOnAConfiguredProperty(visits: Visit[]) {
+  return visits.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function localeCompareOnAnOptionalProperty(a: Visit | undefined, b: Visit) {
+  return a?.createdAt.localeCompare(b.createdAt);
+}
+
+export function relationalOnAConfiguredProperty(a: Visit, b: Visit) {
+  return a.date < b.date;
+}
+
+export function comparatorOverAFormattedArray(starts: Date[], zone: string) {
+  return starts.map((s) => formatInTimeZone(s, zone, "yyyy-MM-dd")).toSorted((a, b) => b.localeCompare(a));
+}
+
+export function bareSortOfAMappedArray(starts: Date[], zone: string) {
+  const dates = starts.map((s) => formatInTimeZone(s, zone, "yyyy-MM-dd"));
+  dates.sort();
+  return dates;
+}
+
+export function bareToSortedThroughASpreadSet(starts: Date[]) {
+  const keys = new Set(starts.map((s) => s.toISOString()));
+  return [...keys].toSorted();
+}
+
+export function bareSortOfABlockBodiedMap(starts: Date[]) {
+  return starts
+    .map((s) => {
+      return format(s, "yyyy-MM-dd");
+    })
+    .sort();
+}
+
+export function bareSortOfALiteralArray() {
+  return ["2026-11-05", "2026-11-04"].sort();
+}
+
+export function relationalInsideAComparator(zones: string[]) {
+  return zones.map(orgToday).sort((a, b) => (a < b ? -1 : 1));
+}
+
+export function elementCallbackParameter(h: Holiday, starts: Date[]) {
+  const days = Array.from(starts, (s) => format(s, "yyyy-MM-dd"));
+  return days.filter((day) => day > h.startDate);
+}
