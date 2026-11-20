@@ -1,7 +1,7 @@
 /**
  * `@common-pattern/lint` — the JavaScript flavour.
  *
- * Eleven rules, written as plain ESLint rule objects. Oxlint's JS plugin host
+ * Twelve rules, written as plain ESLint rule objects. Oxlint's JS plugin host
  * implements the ESLint v9 rule API, so the same objects run under either
  * linter unmodified; nothing here imports from oxlint or from ESLint.
  *
@@ -15,6 +15,7 @@
  */
 
 import noComments from "./rules/no-comments.js";
+import noDateStringComparison from "./rules/no-date-string-comparison.js";
 import noDoubleAssertion from "./rules/no-double-assertion.js";
 import noErrorMessageToResponse from "./rules/no-error-message-to-response.js";
 import noGluedTimestampViaVariable from "./rules/no-glued-timestamp-via-variable.js";
@@ -32,6 +33,7 @@ export default {
     "no-utc-calendar-day": noUtcCalendarDay,
     "no-glued-timestamps": noGluedTimestamps,
     "no-glued-timestamp-via-variable": noGluedTimestampViaVariable,
+    "no-date-string-comparison": noDateStringComparison,
     "no-double-assertion": noDoubleAssertion,
     "no-error-message-to-response": noErrorMessageToResponse,
     "no-suppressions": noSuppressions,

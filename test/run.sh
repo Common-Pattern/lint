@@ -24,6 +24,7 @@ EXPECTED_WIDTH_VIOLATIONS=16
 EXPECTED_HOST_VIOLATIONS=16
 EXPECTED_COMMENT_VIOLATIONS=10
 EXPECTED_COMMENT_JS_VIOLATIONS=3
+EXPECTED_DATE_COMPARE_VIOLATIONS=13
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
@@ -125,5 +126,14 @@ expect "comments-clean.tsx     " "$(ox_count test/fixtures/comments-clean.tsx)" 
 
 echo '==> ...nor on a hashbang, nor on the JSDoc that IS the type annotation in a .mjs'
 expect "comments-clean.mjs     " "$(ox_count test/fixtures/comments-clean.mjs)" 0
+
+# Switched on by an override rather than at the top level, because the override
+# is where the `functions` option is passed, and the fixture has to exercise the
+# configured-helper path.
+echo "==> no-date-string-comparison: literals, formatter calls, configured helpers, and the bindings they flow through"
+expect "date-compare-violations.ts" "$(ox_count test/fixtures/date-compare-violations.ts)" "$EXPECTED_DATE_COMPARE_VIOLATIONS"
+
+echo '==> ...and does NOT fire on parsed dates, numbers, Date objects, equality, a formatter method, an unconfigured helper, or object fields'
+expect "date-compare-clean.ts     " "$(ox_count test/fixtures/date-compare-clean.ts)" 0
 
 echo "OK"

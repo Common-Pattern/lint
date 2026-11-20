@@ -20,7 +20,8 @@
     "common-pattern/no-style-prop": "error",
     "common-pattern/no-pinned-width": "error",
     "common-pattern/no-host-elements": "off",
-    "common-pattern/no-comments": "off"
+    "common-pattern/no-comments": "off",
+    "common-pattern/no-date-string-comparison": "off"
   },
   "overrides": [
     {
@@ -42,6 +43,12 @@
           "error",
           { "allow": ["html", "body"], "library": "@example/ui", "docs": "the conventions file" }
         ]
+      }
+    },
+    {
+      "files": ["**/date-compare-*.ts"],
+      "rules": {
+        "common-pattern/no-date-string-comparison": ["error", { "functions": ["orgToday"] }]
       }
     },
     {

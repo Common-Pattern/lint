@@ -35,6 +35,7 @@ them, and nothing else.
 | [`no-utc-calendar-day`](#no-utc-calendar-day) | deriving a calendar day from an instant by slicing its ISO string |
 | [`no-glued-timestamps`](#no-glued-timestamps) | building a timestamp by interpolation, at the call site |
 | [`no-glued-timestamp-via-variable`](#no-glued-timestamp-via-variable) | the same glue, reaching a date consumer through a variable |
+| [`no-date-string-comparison`](#no-date-string-comparison) | ordering dates with `<` / `>` on their strings |
 | [`no-double-assertion`](#no-double-assertion) | `x as unknown as T` |
 | [`no-error-message-to-response`](#no-error-message-to-response) | a caught error, or its `.message`, sent to the client |
 | [`no-suppressions`](#no-suppressions) | every spelling of "ignore this diagnostic" |
@@ -181,6 +182,47 @@ it through an array all escape this rule. Following those needs data-flow
 analysis rather than scope analysis, and a linter that guesses at data flow
 produces exactly the false positives that get rules switched off. Scope
 resolution is a real boundary and this rule sits on the near side of it.
+
+### `no-date-string-comparison`
+
+Bans `<`, `<=`, `>` and `>=` when either side is provably a date string:
+
+```ts
+if (holiday.endDate < format(start, "yyyy-MM-dd")) continue;
+const from = schedule.startDate > today ? schedule.startDate : today;
+```
+
+A zero-padded `yyyy-MM-dd` sorts the same way as the days it names, so both
+lines work today. That is a property of one string shape, and nothing at the
+comparison says which shape is there. A day key sorts before its own midnight
+(`"2026-11-05" < "2026-11-05T00:00:00Z"`), two offsets put a later instant first
+(`"2026-11-05T10:00:00+05:30" > "2026-11-05T04:31:00Z"`), a display string is
+wrong for most pairs, and an empty string seeded into a `reduce` wins every
+"earliest" contest. Parse, then compare:
+
+```ts
+if (isBefore(parseISO(holiday.endDate), start)) continue;
+const from = max([parseISO(schedule.startDate), parseISO(today)]);
+```
+
+**What counts as a date string.** An ISO-date literal; a bare call to date-fns'
+`format`, `formatDate`, `formatISO`, `formatISO9075`, `formatRFC3339`,
+`formatRFC7231`, `lightFormat` or date-fns-tz's `formatInTimeZone`; a call to
+`.toISOString()`, `.toJSON()`, `.toDateString()` or `.toLocaleDateString()`; a
+call to a helper named in the `functions` option; a binding written from any of
+those, resolved through scope analysis and followed through aliases; and a `??`,
+`||` or `? :` with such a branch.
+
+```json
+"common-pattern/no-date-string-comparison": ["error", { "functions": ["orgToday", "toDayKey"] }]
+```
+
+Not matched, deliberately: object fields (`order.start < order.finish`),
+parameters, and anything else only a type checker could classify. JS plugins
+get no types, and guessing from names fires on numbers and `Date` objects
+constantly. A method named `format` is not matched either, because
+`Intl.NumberFormat#format` shares it. Equality is allowed: two day keys are
+equal exactly when their days are.
 
 ### `no-double-assertion`
 
